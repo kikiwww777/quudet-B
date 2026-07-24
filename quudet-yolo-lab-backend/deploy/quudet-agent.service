@@ -1,0 +1,57 @@
+# QuuDet Agent systemd service
+#
+# Install:
+#   sudo cp quudet-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable quudet-agent
+#   sudo systemctl start quudet-agent
+#
+# View logs:
+#   sudo journalctl -u quudet-agent -f
+
+[Unit]
+Description=QuuDet YOLO Lab Agent — claim & execute training jobs
+Documentation=https://github.com/your-org/quudet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=quudet
+Group=quudet
+WorkingDirectory=/srv/quudet/quudet-yolo-lab-backend
+
+# Master API endpoint
+Environment="MASTER_API_BASE=http://<master-host>:8000"
+
+# Node identity
+Environment="NODE_ID=linux-gpu-01"
+Environment="NODE_NAME=Linux GPU Node 01"
+Environment="NODE_KIND=remote"
+Environment="NODE_TOKEN=<node-secret-token>"
+
+# Node capacity
+Environment="NODE_MAX_CONCURRENCY=1"
+
+# Paths
+Environment="YOLO_WORK_DIR=/srv/quudet"
+Environment="DATA_DIR=/srv/quudet/data"
+
+# Python
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/srv/quudet/quudet-yolo-lab-backend/.venv/bin/python -m app.agent.runner
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

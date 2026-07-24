@@ -1,0 +1,102 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: quudet
+      POSTGRES_PASSWORD: quudet
+      POSTGRES_DB: quudet
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quudet -d quudet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./quudet-yolo-lab-backend
+    environment:
+      EXECUTION_BACKEND: celery
+      DATABASE_URL: postgresql+psycopg2://quudet:quudet@db:5432/quudet
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: change-me-use-openssl-rand-hex-32
+      FIRST_SUPERUSER_EMAIL: admin@quudet.local
+      FIRST_SUPERUSER_PASSWORD: admin123
+      YOLO_WORK_DIR: /workspace
+      DATA_DIR: /data
+      CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      DISABLE_AUTH: "true"
+    volumes:
+      - ./:/workspace
+      - quudet_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ./quudet-yolo-lab-backend
+    command: >
+      sh -c "alembic upgrade head && celery -A app.celery_app worker -l info"
+    environment:
+      EXECUTION_BACKEND: celery
+      DATABASE_URL: postgresql+psycopg2://quudet:quudet@db:5432/quudet
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: change-me-use-openssl-rand-hex-32
+      YOLO_WORK_DIR: /workspace
+      DATA_DIR: /data
+      DISABLE_AUTH: "true"
+    volumes:
+      - ./:/workspace
+      - quudet_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    build:
+      context: ./quudet-yolo-lab-backend
+    command: ["celery", "-A", "app.celery_app", "beat", "-l", "info"]
+    environment:
+      EXECUTION_BACKEND: celery
+      DATABASE_URL: postgresql+psycopg2://quudet:quudet@db:5432/quudet
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: change-me-use-openssl-rand-hex-32
+      YOLO_WORK_DIR: /workspace
+      DATA_DIR: /data
+      DISABLE_AUTH: "true"
+    volumes:
+      - ./:/workspace
+      - quudet_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: ./nginx-static/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  quudet_data:

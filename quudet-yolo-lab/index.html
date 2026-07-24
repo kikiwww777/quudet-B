@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuuDet YOLO Lab</title>
+  <link rel="stylesheet" href="./styles.css?ver=20260710_node_sched" />
+</head>
+<body>
+  <div id="app-shell" class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-text-wrap">
+          <div class="brand-title">QuuDet YOLO Lab</div>
+        </div>
+      </div>
+      <nav class="menu">
+        <button class="menu-item active" data-page="dashboard">仪表盘</button>
+        <button class="menu-item" data-page="dataset">数据集管理</button>
+        <button class="menu-item" data-page="test">模型测试</button>
+        <button class="menu-item" data-page="detect">目标检测</button>
+        <button class="menu-item" data-page="nodes">节点管理</button>
+        <button class="menu-item" data-page="monitor">训练任务监控</button>
+        <button class="menu-item" data-page="task">任务管理</button>
+        <button class="menu-item" data-page="help">AI助手</button>
+      </nav>
+      <div class="sidebar-footer">local</div>
+    </aside>
+
+    <main id="app" class="main">
+      <header class="topbar">
+        <div class="topbar-title">QuuDet YOLO Lab</div>
+        <div class="topbar-right">
+          <input id="api-base-input" placeholder="http://127.0.0.1:8000" />
+          <button id="api-base-save" class="ghost" type="button">应用</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="page active">
+        <div class="card card-elevated dashboard-card">
+          <div class="dashboard-head">
+            <div class="dash-title">
+              <span class="dash-title-icon">⚕</span>
+              <span class="dash-title-text">仪表盘</span>
+            </div>
+            <div class="dash-action">刷新</div>
+          </div>
+          <div class="dash-stats">
+            <div class="dash-stat">
+              <div class="dash-stat-ic dash-ic-blue">⚕</div>
+              <div class="dash-stat-meta">
+                <div class="dash-stat-k">总任务数</div>
+                <div class="dash-stat-v" id="stat-total">0</div>
+              </div>
+            </div>
+            <div class="dash-stat">
+              <div class="dash-stat-ic dash-ic-indigo">⚗</div>
+              <div class="dash-stat-meta">
+                <div class="dash-stat-k">运行中任务</div>
+                <div class="dash-stat-v" id="stat-running">0</div>
+              </div>
+            </div>
+            <div class="dash-stat">
+              <div class="dash-stat-ic dash-ic-green">✔</div>
+              <div class="dash-stat-meta">
+                <div class="dash-stat-k">已完成任务</div>
+                <div class="dash-stat-v" id="stat-success">0</div>
+              </div>
+            </div>
+            <div class="dash-stat">
+              <div class="dash-stat-ic dash-ic-purple">👁</div>
+              <div class="dash-stat-meta">
+                <div class="dash-stat-k">已训练模型</div>
+                <div class="dash-stat-v" id="stat-models">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card-elevated dashboard-card">
+          <div class="insight-head">
+            <h2 class="page-title">系统健康洞察</h2>
+            <button id="goto-dataset-train" class="ghost tiny" type="button">前往训练配置</button>
+          </div>
+          <div class="insight-grid">
+            <div class="insight-item">
+              <div class="insight-k">实时推理链路</div>
+              <div class="insight-v">API/上传/任务已联通</div>
+            </div>
+            <div class="insight-item">
+              <div class="insight-k">训练监控</div>
+              <div class="insight-v">支持 loss/mAP/precision/recall</div>
+            </div>
+            <div class="insight-item">
+              <div class="insight-k">检测结果可视化</div>
+              <div class="insight-v">任务详情支持图文结果追踪</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card-elevated dashboard-card">
+          <table>
+            <thead><tr><th>任务ID</th><th>类型</th><th>状态</th><th>节点</th><th>进度</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody id="recent-task-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="dataset" class="page">
+        <div class="card card-elevated">
+          <h2>数据集管理</h2>
+          <div class="dataset-upload-guide">
+            <div class="guide-title">支持上传的数据集类型</div>
+            <ul>
+              <li>推荐上传 YOLO 格式 ZIP：包含 <code>images/</code> 与 <code>labels/</code> 目录。</li>
+              <li>也可上传 <code>data.yaml</code>（或 yml）用于指向已有数据集路径。</li>
+              <li>标签应为 YOLO txt 格式：<code>class x_center y_center width height</code>（归一化坐标）。</li>
+              <li>类别定义建议在 <code>data.yaml</code> 的 <code>names</code> 字段完整配置。</li>
+            </ul>
+          </div>
+          <div class="button-row">
+            <input id="dataset-file-input" type="file" hidden />
+            <button id="dataset-upload-btn" class="primary" type="button">上传数据集</button>
+            <span id="dataset-info" class="muted"></span>
+          </div>
+          <h3>训练配置 <span class="tag-pill">yolo train</span></h3>
+          <div id="train-model-info" class="model-info"></div>
+          <div class="form-grid">
+            <label>模型架构 <select id="sel-train-model" class="select-input"></select></label>
+            <label>模型规模 <select id="sel-train-scale" class="select-input"></select></label>
+            <label class="label-block">数据集配置
+              <select id="sel-train-data" class="select-input" data-field="data"></select>
+              <span id="dataset-select-hint" class="muted hint-under-select"></span>
+            </label>
+            <label>预训练权重 <select id="sel-train-pretrained" class="select-input" data-field="pretrained"></select></label>
+            <input id="resolved-train-model" type="hidden" data-field="model" />
+            <label>训练轮次 <input data-field="epochs" value="100" /></label>
+            <label>批次大小 <input data-field="batch" value="16" /></label>
+            <label>图像宽度 <input type="number" min="32" step="32" data-field="imgsz_w" value="640" title="输入边长（像素）" /></label>
+            <label>图像高度 <input type="number" min="32" step="32" data-field="imgsz_h" value="640" title="输入边长（像素）" /></label>
+            <label>设备 <select class="select-input" data-field="device"><option value="">自动</option><option value="cpu">cpu</option><option value="0">GPU:0</option><option value="1">GPU:1</option></select></label>
+            <label>workers <input data-field="workers" value="8" /></label>
+            <label>优化器 <select id="sel-train-optimizer" class="select-input" data-field="optimizer"></select></label>
+            <label>超参数文件 <input data-field="hyp" placeholder="如 ultralytics/cfg/hyp.scratch-low.yaml" /></label>
+            <label>项目名称 <input data-field="project" value="runs/train" /></label>
+            <label>实验名称 <input id="train-exp-name" data-field="name" value="quudet-train" /></label>
+            <label>执行节点 <select id="sel-train-node" class="select-input"><option value="">自动/本机</option></select></label>
+            <label>执行目标 <select id="sel-train-target" class="select-input"><option value="">自动</option><option value="local">仅本地</option><option value="remote">仅远程</option></select></label>
+            <label class="checkbox-label"><input id="chk-train-require-gpu" type="checkbox" /> 强制使用 GPU</label>
+          </div>
+          <p class="muted field-span-note">训练与验证阶段使用正方形输入；若宽高不一致，将自动取较大边作为 imgsz（与 Ultralytics 行为一致）。</p>
+          <h4 class="subsection-title">优化与正则</h4>
+          <div class="form-grid">
+            <label>初始学习率 lr0 <input data-field="lr0" value="0.01" title="Ultralytics 默认：SGD 0.01，Adam/AdamW 常用 0.001" /></label>
+            <label>最终 LR 比例 lrf <input data-field="lrf" value="0.01" title="最终学习率 = lr0 × lrf" /></label>
+            <label>动量 momentum <input data-field="momentum" value="0.937" /></label>
+            <label>权重衰减 weight_decay <input data-field="weight_decay" value="0.0005" /></label>
+            <label>预热轮次 warmup_epochs <input data-field="warmup_epochs" value="3" /></label>
+            <label>余弦学习率 cos_lr <select class="select-input" data-field="cos_lr"><option value="False" selected>关闭（默认）</option><option value="True">开启</option></select></label>
+            <label>混合精度 AMP <select class="select-input" data-field="amp"><option value="True" selected>开启（默认）</option><option value="False">关闭</option></select></label>
+          </div>
+          <h4 class="subsection-title">数据增强</h4>
+          <div class="form-grid augment-grid">
+            <label>Mosaic 概率 <input data-field="mosaic" value="1.0" title="0~1" /></label>
+            <label>MixUp 概率 <input data-field="mixup" value="0.0" title="0~1" /></label>
+            <label>CutMix 概率 <input data-field="cutmix" value="0.0" title="0~1" /></label>
+            <label>Copy-Paste 概率 <input data-field="copy_paste" value="0.0" title="分割任务常用" /></label>
+            <label>关闭 Mosaic 的最后轮数 <input data-field="close_mosaic" value="10" title="最后 N 个 epoch 关闭 mosaic；0 表示全程启用" /></label>
+          </div>
+          <div class="button-row">
+            <button id="start-train-btn" class="primary" type="button">开始训练</button>
+            <button id="start-train-btn-2" class="ghost" type="button">快速开始训练</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="test" class="page">
+        <div class="card card-elevated">
+          <h2>模型测试</h2>
+          <div class="segment-row" id="seg-test-weight">
+            <button class="segment active" data-mode="official" type="button">官方预训练权重</button>
+            <button class="segment" data-mode="user" type="button">用户训练权重</button>
+          </div>
+          <div class="form-grid">
+            <label>模型权重 <select id="sel-test-weight" class="select-input"></select></label>
+            <input id="resolved-test-model" type="hidden" data-field="model" />
+            <label class="label-block">数据集配置
+              <select id="sel-test-data" class="select-input" data-field="data"></select>
+              <span id="test-dataset-select-hint" class="muted hint-under-select"></span>
+            </label>
+            <label>图像宽度 <input type="number" min="32" step="32" data-field="imgsz_w" value="640" /></label>
+            <label>图像高度 <input type="number" min="32" step="32" data-field="imgsz_h" value="640" /></label>
+            <label>置信度<input data-field="conf" value="0.001" /></label>
+            <label>IoU<input data-field="iou" value="0.50" /></label>
+            <label>设备 <select class="select-input" data-field="device"><option value="">自动</option><option value="cpu">cpu</option><option value="0">GPU:0</option><option value="1">GPU:1</option></select></label>
+            <label>项目名称 <input data-field="project" value="runs/val" /></label>
+            <label>实验名称 <input data-field="name" value="quudet-val" /></label>
+            <label>执行节点 <select id="sel-test-node" class="select-input"><option value="">自动/本机</option></select></label>
+            <label>执行目标 <select id="sel-test-target" class="select-input"><option value="">自动</option><option value="local">仅本地</option><option value="remote">仅远程</option></select></label>
+          </div>
+          <p class="muted field-span-note">验证阶段与训练相同，使用正方形 imgsz；宽高不一致时取较大边。</p>
+          <button id="start-test-btn" class="primary" type="button">开始测试</button>
+        </div>
+      </section>
+
+      <section id="detect" class="page">
+        <div class="card card-elevated">
+          <h2>目标检测</h2>
+          <div class="segment-row" id="seg-detect-weight">
+            <button class="segment active" data-mode="official" type="button">官方预训练权重</button>
+            <button class="segment" data-mode="user" type="button">用户训练权重</button>
+          </div>
+          <div class="form-grid">
+            <label>模型权重 <select id="sel-detect-weight" class="select-input"></select></label>
+            <input id="resolved-detect-model" type="hidden" data-field="model" />
+            <div class="upload-file-box">
+              <input id="detect-file-input" type="file" accept="image/*,video/*" hidden />
+              <div class="upload-row">
+                <button id="detect-file-pick" class="ghost" type="button">选择图片/视频</button>
+                <span id="detect-file-name" class="file-name">未选择</span>
+              </div>
+              <div class="upload-hint">上传后自动作为 source 执行预测。</div>
+              <input id="resolved-detect-source" type="hidden" data-field="source" />
+            </div>
+            <label>图像宽度 <input type="number" min="32" step="32" data-field="imgsz_w" value="640" /></label>
+            <label>图像高度 <input type="number" min="32" step="32" data-field="imgsz_h" value="640" /></label>
+            <label>置信度 <input data-field="conf" value="0.25" /></label>
+            <label>IoU <input data-field="iou" value="0.50" /></label>
+            <label>设备 <select class="select-input" data-field="device"><option value="">自动</option><option value="cpu">cpu</option><option value="0">GPU:0</option><option value="1">GPU:1</option></select></label>
+            <label>项目名称 <input data-field="project" value="runs/detect" /></label>
+            <label>实验名称 <input data-field="name" value="quudet-detect" /></label>
+            <label>类别过滤 <input data-field="classes" placeholder="如 0,1,2" /></label>
+            <label>执行节点 <select id="sel-detect-node" class="select-input"><option value="">自动/本机</option></select></label>
+            <label>执行目标 <select id="sel-detect-target" class="select-input"><option value="">自动</option><option value="local">仅本地</option><option value="remote">仅远程</option></select></label>
+          </div>
+          <p class="muted field-span-note">预测支持矩形输入：宽高不同时按 [高, 宽] 传入 Ultralytics。</p>
+          <div class="button-row detect-actions">
+            <button id="start-detect-btn" class="primary" type="button">开始检测</button>
+          </div>
+          <div id="detect-latest-panel" style="display:none; margin-top:14px;">
+            <h3>最新检测结果</h3>
+            <div id="detect-latest-summary" class="muted"></div>
+            <div id="detect-latest-images" class="task-detail-images"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="monitor" class="page">
+        <div class="card card-elevated">
+          <h2>训练任务监控</h2>
+          <div class="button-row">
+            <button id="monitor-refresh-btn" class="ghost" type="button">刷新曲线</button>
+            <div id="current-train-info" class="muted"></div>
+          </div>
+          <div class="form-grid monitor-filters">
+            <label>监控节点
+              <select id="sel-monitor-node" class="select-input">
+                <option value="__local__">本机（未分配节点）</option>
+              </select>
+            </label>
+            <label>监控任务
+              <select id="sel-monitor-job" class="select-input">
+                <option value="">自动（该节点当前运行中）</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid">
+            <div>
+              <div id="monitor-task-id" class="muted">-</div>
+              <div class="progress-bar"><div id="monitor-progress-fill" class="progress-fill" style="width:0%"></div></div>
+              <div id="monitor-progress-text" class="muted">-</div>
+              <div id="monitor-metrics-values" class="muted"></div>
+            </div>
+            <div id="metric-charts" class="chart-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="nodes" class="page">
+        <div class="card card-elevated">
+          <h2>节点管理</h2>
+          <div class="button-row">
+            <button id="nodes-refresh-btn" class="ghost" type="button">刷新节点</button>
+            <div id="nodes-summary" class="muted"></div>
+          </div>
+          <table>
+            <thead><tr><th>节点ID</th><th>名称</th><th>状态</th><th>类型</th><th>OS</th><th>GPU</th><th>并发</th><th>运行中</th><th>最后心跳</th></tr></thead>
+            <tbody id="nodes-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="task" class="page">
+        <div class="card card-elevated task-card">
+          <h2>任务管理</h2>
+          <div class="button-row">
+            <button id="refresh-task-btn" class="primary" type="button">刷新</button>
+            <button id="clear-task-btn" class="danger" type="button">清空全部任务</button>
+            <label style="max-width:260px;">节点筛选
+              <select id="task-node-filter" class="select-input"><option value="">全部节点</option></select>
+            </label>
+          </div>
+          <table>
+            <thead><tr><th>任务ID</th><th>类型</th><th>状态</th><th>节点</th><th>进度</th><th>创建时间</th><th>项目</th><th>操作</th></tr></thead>
+            <tbody id="task-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="help" class="page"><div class="placeholder">AI 助手（后续可接大模型 API）</div></section>
+    </main>
+  </div>
+
+  <dialog id="task-detail-dialog">
+    <div class="dialog-content">
+      <h3>任务详情</h3>
+      <pre id="task-detail-content"></pre>
+      <div id="task-detail-images" class="task-detail-images"></div>
+      <div class="button-row">
+        <button id="task-logs-btn" class="ghost" type="button">查看日志尾部</button>
+        <button id="close-dialog-btn" class="primary" type="button">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="./app.js?ver=20260710_node_sched"></script>
+</body>
+</html>

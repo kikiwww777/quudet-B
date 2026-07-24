@@ -1,0 +1,20 @@
+.idea/
+__pycache__/
+*.py[cod]
+.venv/
+quudet-yolo-lab-backend/data/
+quudet-yolo-lab-backend/.env
+*.db
+
+# 模型权重文件（太大，不适合上传）
+*.pt
+
+# 训练/推理输出
+runs/
+
+# 日志文件
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store

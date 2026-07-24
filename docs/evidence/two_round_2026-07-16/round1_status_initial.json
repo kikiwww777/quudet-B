@@ -1,0 +1,26 @@
+{
+  "group_id": "0dba1af2-3ebf-46e3-a12b-21d0bcb8148f",
+  "group_status": "PENDING",
+  "jobs": [
+    {
+      "id": "3d5213ee-f3ad-496e-bb49-93120f93e2fd",
+      "role": "baseline",
+      "status": "PENDING_ASSIGN",
+      "dispatch_status": "PENDING_ASSIGN",
+      "progress": 0,
+      "assigned_node_id": null,
+      "error": null,
+      "log_path": null
+    },
+    {
+      "id": "f1e95b81-7470-4746-8e49-d8fe98613516",
+      "role": "variant",
+      "status": "PENDING_ASSIGN",
+      "dispatch_status": "PENDING_ASSIGN",
+      "progress": 0,
+      "assigned_node_id": null,
+      "error": null,
+      "log_path": null
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+﻿{
+    "name":  "two-round-voc-r1",
+    "runs":  [
+                 {
+                     "role":  "baseline",
+                     "job_type":  "train",
+                     "required_gpu":  true,
+                     "execution_target":  "local",
+                     "payload":  {
+                                     "model":  "yolo11n.pt",
+                                     "data":  "C:/Users/86159/Documents/Obsidian Vault/AI4Science/07_AI代理/实验模块/quudet/quudet-yolo-lab-backend/data/datasets/VOC/VOC.yaml",
+                                     "epochs":  3,
+                                     "imgsz":  416,
+                                     "batch":  4,
+                                     "device":  "cuda",
+                                     "seed":  20260716
+                                 }
+                 },
+                 {
+                     "role":  "variant",
+                     "job_type":  "train",
+                     "required_gpu":  true,
+                     "execution_target":  "local",
+                     "payload":  {
+                                     "model":  "yolo11s.pt",
+                                     "data":  "C:/Users/86159/Documents/Obsidian Vault/AI4Science/07_AI代理/实验模块/quudet/quudet-yolo-lab-backend/data/datasets/VOC/VOC.yaml",
+                                     "epochs":  3,
+                                     "imgsz":  416,
+                                     "batch":  2,
+                                     "device":  "cuda",
+                                     "seed":  20260716
+                                 }
+                 }
+             ]
+}
