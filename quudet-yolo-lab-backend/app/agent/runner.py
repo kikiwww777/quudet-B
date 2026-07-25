@@ -34,8 +34,8 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
-from app.config import get_settings
-from app.services.train_metrics import (
+from app.agent.runtime_paths import get_agent_paths
+from app.shared.train_metrics import (
     epoch_progress,
     parse_results_csv,
     resolve_results_csv_for_train,
@@ -194,8 +194,8 @@ def _get(path: str) -> dict:
 
 
 def _download_dataset_bundle(job_id: str, dataset_id: int) -> tuple[Path, str]:
-    settings = get_settings()
-    node_ds_root = settings.artifacts_dir / "node_datasets"
+    paths = get_agent_paths()
+    node_ds_root = paths.artifacts_dir / "node_datasets"
     node_ds_root.mkdir(parents=True, exist_ok=True)
     cache_dir = node_ds_root / str(dataset_id)
     zip_path = node_ds_root / f"{dataset_id}.zip"
@@ -236,8 +236,8 @@ def _download_job_bundle(job_id: str) -> Path:
 
     Returns the extraction directory (under node cache).
     """
-    settings = get_settings()
-    cache_root = settings.artifacts_dir / "node_job_bundles"
+    paths = get_agent_paths()
+    cache_root = paths.artifacts_dir / "node_job_bundles"
     cache_root.mkdir(parents=True, exist_ok=True)
     bundle_dir = cache_root / job_id
     zip_path = cache_root / f"{job_id}.zip"
@@ -280,9 +280,9 @@ def _job_started_at(job: dict) -> datetime | None:
 
 
 def _metrics_for_job(job: dict) -> dict | None:
-    settings = get_settings()
-    work_dir = settings.resolved_yolo_work_dir
-    job_dir = settings.artifacts_dir / str(job.get("id"))
+    paths = get_agent_paths()
+    work_dir = paths.yolo_work_dir
+    job_dir = paths.artifacts_dir / str(job.get("id"))
     csv_path = resolve_results_csv_for_train(
         payload=dict(job.get("payload") or {}),
         work_dir=work_dir,
@@ -331,8 +331,8 @@ def claim_next_job() -> dict | None:
 
 def execute_job(job: dict) -> None:
     job_id = str(job.get("id"))
-    settings = get_settings()
-    work_dir = settings.resolved_yolo_work_dir
+    paths = get_agent_paths()
+    work_dir = paths.yolo_work_dir
     payload = dict(job.get("payload") or {})
     job_type = str(job.get("job_type"))
     dataset_id = job.get("dataset_id")
@@ -390,7 +390,12 @@ def execute_job(job: dict) -> None:
             _emit_event(job_id, "status", {"status": "FAILED"})
             return
 
-    cmd = build_command(job_type, payload, settings.artifacts_dir / job_id)
+    cmd = build_command(
+        job_type,
+        payload,
+        paths.artifacts_dir / job_id,
+        work_dir=work_dir,
+    )
     _emit_event(job_id, "status", {"status": "RUNNING"})
     _emit_event(job_id, "log", {"text": f"# agent node={NODE_ID}\n# cmd={' '.join(cmd)}\n"})
 
@@ -487,7 +492,7 @@ def _provision_cache_root() -> Path:
     if env:
         return Path(env)
     if sys.platform == "win32":
-        return get_settings().artifacts_dir / "provision_cache"
+        return get_agent_paths().provision_cache_dir
     return Path("/srv/quudet/cache")
 
 

@@ -34,8 +34,16 @@ start "QuuDet-API" /MIN cmd /c "cd /d %ROOT%\quudet-yolo-lab-backend && .venv\Sc
 timeout /t 3 /nobreak >nul
 echo   OK
 
-:: 4. Start frontend
-echo [4/4] Starting frontend (port 8080)...
+:: 4. Start local training agent
+echo [4/5] Starting local training agent...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\quudet-yolo-lab-backend\scripts\start-local-agent.ps1"
+if %errorlevel% neq 0 (
+    echo [WARN] Local training agent did not start. Check service-logs\control-agent.stderr.log.
+)
+echo   OK
+
+:: 5. Start frontend
+echo [5/5] Starting frontend (port 8080)...
 start "QuuDet-Frontend" /MIN cmd /c "cd /d %ROOT%\quudet-yolo-lab && ..\quudet-yolo-lab-backend\.venv\Scripts\python.exe -m http.server 8080 --bind 0.0.0.0"
 echo   OK
 
