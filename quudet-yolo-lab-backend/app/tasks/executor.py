@@ -147,8 +147,13 @@ def execute_job(job_id: str) -> None:
         job.metrics_cache = None
         db.commit()
 
-        cmd = build_command(job.job_type, job.payload or {}, job_dir)
         work_dir = settings.resolved_yolo_work_dir
+        cmd = build_command(
+            job.job_type,
+            job.payload or {},
+            job_dir,
+            work_dir=work_dir,
+        )
 
         # --- Snapshot: freeze all reproducible info before execution ---
         try:

@@ -9,8 +9,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from app.config import get_settings
-
 
 def _pick(payload: dict[str, Any], *keys: str, default: str = "") -> str:
     for k in keys:
@@ -122,10 +120,6 @@ def _is_safe_key(key: str) -> bool:
     return not any(ch in key for ch in dangerous)
 
 
-def _work_dir() -> Path:
-    return get_settings().resolved_yolo_work_dir
-
-
 def yolo_executable() -> str:
     # Try system PATH first
     found = shutil.which("yolo") or shutil.which("yolo.exe")
@@ -143,11 +137,17 @@ def yolo_executable() -> str:
     return str(_sys.executable)
 
 
-def build_command(job_type: str, payload: dict[str, Any], job_dir: Path) -> list[str]:
+def build_command(
+    job_type: str,
+    payload: dict[str, Any],
+    job_dir: Path,
+    *,
+    work_dir: Path,
+) -> list[str]:
     """Return argv list for subprocess (no shell)."""
     # yapf: disable
     payload = payload or {}
-    wd = _work_dir()
+    wd = work_dir
     exe = yolo_executable()
 
     # If using python as fallback, use entrypoint directly
