@@ -87,6 +87,11 @@ def collect_node_capabilities() -> dict:
 
     Returns a dict suitable for the ``capabilities`` field of
     ``ComputeNode``.
+
+    ``node_kind`` is set from the ``NODE_KIND`` env var (default ``local``).
+    This is a deployment-level decision — the admin knows whether a node
+    is local or remote — and cannot be reliably inferred from IP or hostname
+    because topology may change over time.
     """
     caps: dict = {
         "node_kind": _env("NODE_KIND", "local"),
