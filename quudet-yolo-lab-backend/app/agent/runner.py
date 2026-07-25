@@ -484,16 +484,23 @@ def execute_job(job: dict) -> None:
 def _provision_cache_root() -> Path:
     """Return the node-local cache root directory.
 
-    Override via ``PROVISION_CACHE_ROOT`` env var.  Defaults to
-    ``/srv/quudet/cache`` on Linux and falls back to a local dir on Windows
-    for development.
+    Override via ``PROVISION_CACHE_ROOT`` env var.  On Linux defaults to
+    ``/srv/quudet/cache`` (auto-created if missing); falls back to the
+    agent-local data directory.
     """
     env = os.getenv("PROVISION_CACHE_ROOT", "").strip()
     if env:
         return Path(env)
     if sys.platform == "win32":
         return get_agent_paths().provision_cache_dir
-    return Path("/srv/quudet/cache")
+    # Linux: try /srv/quudet/cache, auto-create if parent exists
+    default = Path("/srv/quudet/cache")
+    try:
+        default.mkdir(parents=True, exist_ok=True)
+        return default
+    except (OSError, PermissionError):
+        # Fallback to agent-local cache
+        return get_agent_paths().provision_cache_dir
 
 
 def _get_provisioner() -> ResourceProvisioner | None:
