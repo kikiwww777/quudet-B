@@ -507,6 +507,11 @@ def _emit_provision_event(provision_id: str, event_type: str, payload: dict) -> 
     )
 
 
+
+def _build_node_auth_query(node_id: str, token: str) -> str:
+    """Encode node credentials safely for a URL query string."""
+    return urlencode({"node_id": node_id, "token": token})
+
 def claim_next_provision() -> dict | None:
     """Claim the next pending provisioning plan from the master."""
     try:
@@ -534,8 +539,7 @@ def execute_provision(provision: dict) -> None:
     # Fetch manifest via node-authenticated GET endpoint
     try:
         manifest_resp = _get(
-            f"/api/v1/resources/manifests/{manifest_id}/for-node"
-            f"?node_id={NODE_ID}&token={NODE_TOKEN}"
+            f"/api/v1/resources/manifests/{manifest_id}/for-node?{_build_node_auth_query(NODE_ID, NODE_TOKEN)}"
         )
     except Exception as e:
         logger.error("Failed to fetch manifest %s: %s", manifest_id, e)
