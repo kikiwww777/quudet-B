@@ -24,6 +24,9 @@ start "QuuDet-API" /B "quudet-yolo-lab-backend\.venv\Scripts\python.exe" -m uvic
 
 timeout /t 3 /nobreak >nul
 
+echo Starting local training agent...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\quudet-yolo-lab-backend\scripts\start-local-agent.ps1"
+
 echo Starting frontend...
 start "QuuDet-Web" /B "quudet-yolo-lab-backend\.venv\Scripts\python.exe" -m http.server 8080 --bind 0.0.0.0 --directory "quudet-yolo-lab"
 
