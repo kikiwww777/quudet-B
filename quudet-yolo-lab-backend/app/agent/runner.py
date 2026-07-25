@@ -35,7 +35,7 @@ from urllib.request import Request, urlopen
 logger = logging.getLogger(__name__)
 
 from app.agent.runtime_paths import get_agent_paths
-from app.services.train_metrics import (
+from app.shared.train_metrics import (
     epoch_progress,
     parse_results_csv,
     resolve_results_csv_for_train,
