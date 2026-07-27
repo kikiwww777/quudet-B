@@ -24,6 +24,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import zipfile
 from datetime import datetime
@@ -76,6 +77,27 @@ if not NODE_TOKEN:
 NODE_MAX_CONCURRENCY = max(1, int(_env("NODE_MAX_CONCURRENCY", "1")))
 POLL_INTERVAL = max(2, int(_env("POLL_INTERVAL_SECONDS", "4")))
 HEARTBEAT_INTERVAL = max(3, int(_env("HEARTBEAT_INTERVAL_SECONDS", "5")))
+
+_RUNTIME_LOCK = threading.Lock()
+_RUNTIME_STATE = {
+    "running_jobs": 0,
+    "active_job_id": None,
+    "active_pid": None,
+    "active_command": None,
+    "phase": "idle",
+    "last_output_at": None,
+    "exit_code": None,
+}
+
+
+def _set_runtime(**values: object) -> None:
+    with _RUNTIME_LOCK:
+        _RUNTIME_STATE.update(values)
+
+
+def _runtime_snapshot() -> dict:
+    with _RUNTIME_LOCK:
+        return dict(_RUNTIME_STATE)
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +177,7 @@ def collect_node_capabilities() -> dict:
         caps["memory_gb"] = None
         caps["disk_free_gb"] = None
 
+    caps["agent_runtime"] = _runtime_snapshot()
     return caps
 
 
@@ -336,6 +359,7 @@ def execute_job(job: dict) -> None:
     payload = dict(job.get("payload") or {})
     job_type = str(job.get("job_type"))
     dataset_id = job.get("dataset_id")
+    _set_runtime(active_job_id=job_id, active_pid=None, active_command=None, phase="preparing", last_output_at=datetime.utcnow().isoformat(), exit_code=None)
 
     # --- Step 0: Download job snapshot/config bundle ---
     bundle_dir: Path | None = None
@@ -396,6 +420,7 @@ def execute_job(job: dict) -> None:
         paths.artifacts_dir / job_id,
         work_dir=work_dir,
     )
+    _set_runtime(active_command=" ".join(cmd), phase="starting")
     _emit_event(job_id, "status", {"status": "RUNNING"})
     _emit_event(job_id, "log", {"text": f"# agent node={NODE_ID}\n# cmd={' '.join(cmd)}\n"})
 
@@ -409,6 +434,7 @@ def execute_job(job: dict) -> None:
         errors="replace",
         bufsize=1,
     )
+    _set_runtime(active_pid=proc.pid, phase="running", last_output_at=datetime.utcnow().isoformat())
 
     line_buffer: list[str] = []
     last_metrics_push = 0.0
@@ -416,6 +442,7 @@ def execute_job(job: dict) -> None:
     while True:
         line = proc.stdout.readline() if proc.stdout else ""
         if line:
+            _set_runtime(last_output_at=datetime.utcnow().isoformat())
             line_buffer.append(line)
             if len(line_buffer) >= 8:
                 _emit_event(job_id, "log", {"text": "".join(line_buffer)})
@@ -446,6 +473,7 @@ def execute_job(job: dict) -> None:
         _emit_event(job_id, "log", {"text": "".join(line_buffer)})
 
     code = proc.wait()
+    _set_runtime(phase="finished", exit_code=code, last_output_at=datetime.utcnow().isoformat())
     snap = _metrics_for_job(job)
     if snap:
         _emit_event(job_id, "metrics", {"metrics": snap})
@@ -721,42 +749,33 @@ def _find_yaml_in_dir(directory: Path) -> Path | None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _heartbeat_loop(stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        try:
+            heartbeat(_runtime_snapshot()["running_jobs"], _collect_cache_inventory())
+        except Exception as e:
+            print(f"[agent] heartbeat failed (will retry): {e}")
+        stop_event.wait(HEARTBEAT_INTERVAL)
+
+
 def run_forever() -> None:
-    """Main loop: register → heartbeat → provision → claim-next → execute.
-
-    All nodes (local and remote) use a token for authentication.
-    Local nodes auto-generate a token; remote nodes get it from env.
-
-    On Linux nodes, the provisioning loop runs before training job claims
-    to ensure required datasets/weights are cached locally.
-    """
+    """Register, continuously report runtime state, and execute claimed jobs."""
     print(f"[agent] node_id={NODE_ID} kind={_env('NODE_KIND', 'local')} master={MASTER_API_BASE}")
-
     register_node()
+    stop_event = threading.Event()
+    threading.Thread(target=_heartbeat_loop, args=(stop_event,), daemon=True).start()
     running = 0
-    next_hb = 0.0
 
     while True:
-        now = time.time()
-        if now >= next_hb:
-            try:
-                cache_info = _collect_cache_inventory()
-                heartbeat(running, cache_info)
-            except Exception as e:
-                print(f"[agent] heartbeat failed (will retry): {e}")
-            next_hb = now + HEARTBEAT_INTERVAL
-
         if running >= NODE_MAX_CONCURRENCY:
             time.sleep(1)
             continue
 
-        # --- Provisioning loop (runs before training jobs) ---
         try:
             run_provision_loop()
         except Exception as e:
             print(f"[agent] provision loop error (will retry): {e}")
 
-        # --- Training job claim ---
         try:
             job = claim_next_job()
             if not job:
@@ -768,13 +787,27 @@ def run_forever() -> None:
             continue
 
         running += 1
+        _set_runtime(running_jobs=running)
+        job_id = str(job.get("id"))
         try:
             execute_job(job)
         except Exception as e:
-            print(f"[agent] job execution failed: {e}")
+            message = f"agent execution failed: {type(e).__name__}: {e}"
+            print(f"[agent] {message}")
+            try:
+                _emit_event(job_id, "summary", {"error_message": message})
+                _emit_event(job_id, "status", {"status": "FAILED"})
+            except Exception as report_error:
+                print(f"[agent] failed to report job error: {report_error}")
         finally:
             running = max(0, running - 1)
-
+            _set_runtime(
+                running_jobs=running,
+                active_job_id=None,
+                active_pid=None,
+                active_command=None,
+                phase="idle",
+            )
 
 def _collect_cache_inventory() -> dict | None:
     """Collect resource cache inventory for heartbeat."""

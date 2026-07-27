@@ -31,6 +31,17 @@ def _merge_reported_running_jobs(current: int, reported: int) -> int:
     """Keep server-reserved slots when another agent reports itself idle."""
     return max(0, current, reported)
 
+
+def _merge_node_capabilities(current: dict | None, reported: dict | None) -> dict:
+    """Preserve an active agent's process telemetry from idle duplicate agents."""
+    merged = dict(current or {})
+    merged.update(reported or {})
+    current_runtime = (current or {}).get("agent_runtime") or {}
+    reported_runtime = (reported or {}).get("agent_runtime") or {}
+    if current_runtime.get("active_job_id") and not reported_runtime.get("active_job_id"):
+        merged["agent_runtime"] = current_runtime
+    return merged
+
 def _mark_node_offline(node: ComputeNode) -> None:
     """Mark a stale node offline and release its server-reserved slots."""
     node.status = "OFFLINE"
@@ -83,7 +94,7 @@ def register_node(
         node.display_name = body.display_name
         node.base_url = body.base_url
         node.token_hash = token_hash
-        node.capabilities = body.capabilities
+        node.capabilities = _merge_node_capabilities(node.capabilities, body.capabilities)
         node.max_concurrent_jobs = max(1, body.max_concurrent_jobs)
         node.status = "ONLINE"
         node.last_seen_at = now
