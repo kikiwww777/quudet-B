@@ -1,4 +1,4 @@
-"""Node management — unified scheduling for local and remote execution nodes.
+"""Node management 鈥?unified scheduling for local and remote execution nodes.
 
 All execution environments (local Windows, local Linux, remote GPU servers)
 register as ``ComputeNode`` instances and claim jobs via ``claim-next``.
@@ -26,6 +26,15 @@ from app.models.user import User
 from app.schemas.node import NodeHeartbeatRequest, NodeRead, NodeRegisterRequest
 
 router = APIRouter(prefix="/nodes", tags=["nodes"])
+
+def _merge_reported_running_jobs(current: int, reported: int) -> int:
+    """Keep server-reserved slots when another agent reports itself idle."""
+    return max(0, current, reported)
+
+def _mark_node_offline(node: ComputeNode) -> None:
+    """Mark a stale node offline and release its server-reserved slots."""
+    node.status = "OFFLINE"
+    node.running_jobs = 0
 
 
 def _hash_node_token(token: str) -> str:
@@ -89,7 +98,7 @@ def node_heartbeat(
     db: Annotated[Session, Depends(get_db)],
 ):
     node = _get_node_or_404(db, node_id, body.token)
-    node.running_jobs = max(0, body.running_jobs)
+    node.running_jobs = _merge_reported_running_jobs(node.running_jobs, body.running_jobs)
     if body.capabilities:
         node.capabilities = body.capabilities
     # Store resource cache inventory from Linux nodes
@@ -115,7 +124,7 @@ def list_nodes(
     rows = db.query(ComputeNode).order_by(ComputeNode.updated_at.desc()).all()
     for node in rows:
         if node.last_seen_at and now - node.last_seen_at > timeout and node.status != "OFFLINE":
-            node.status = "OFFLINE"
+            _mark_node_offline(node)
             stale_jobs = (
                 db.query(JobRecord)
                 .filter(

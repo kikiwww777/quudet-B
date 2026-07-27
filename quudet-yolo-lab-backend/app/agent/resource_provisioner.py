@@ -1,8 +1,8 @@
-"""Resource provisioner — download, verify, extract, cache on Linux nodes.
+"""Resource provisioner 鈥?download, verify, extract, cache on Linux nodes.
 
 Implements the Level A (automatic) and Level B (approval-required) download
 paths from the AR design.  The provisioner never discovers sources or chooses
-URLs — it executes the manifest AR authored.
+URLs 鈥?it executes the manifest AR authored.
 
 Cache layout (``/srv/quudet/cache/``)::
 
@@ -32,6 +32,11 @@ if TYPE_CHECKING:
     from app.models.resource_manifest import ResourceManifest
 
 logger = logging.getLogger(__name__)
+
+
+def _relative_symlink_target(content_target: Path, alias_parent: Path) -> str:
+    """Return a portable relative symlink target for all supported Python versions."""
+    return os.path.relpath(content_target, start=alias_parent)
 
 
 class ResourceProvisioner:
@@ -149,11 +154,11 @@ class ResourceProvisioner:
                 try:
                     existing = json.loads(receipt_path.read_text(encoding="utf-8"))
                     if existing.get("archive_sha256") == archive_sha256:
-                        self._log(on_log, "Receipt matches — cache is valid")
+                        self._log(on_log, "Receipt matches 鈥?cache is valid")
                         return existing
                 except (json.JSONDecodeError, OSError):
-                    self._log(on_log, "Corrupt receipt — re-provisioning")
-            self._log(on_log, "Cache invalid — deleting and re-extracting")
+                    self._log(on_log, "Corrupt receipt 鈥?re-provisioning")
+            self._log(on_log, "Cache invalid 鈥?deleting and re-extracting")
             shutil.rmtree(content_target, ignore_errors=True)
             # Re-extraction happens below (needs_extract is still True)
 
@@ -169,7 +174,7 @@ class ResourceProvisioner:
                 if validator_kind == "yolo_dataset":
                     self._validate_yolo_dataset(extract_tmp, required_paths, validation, on_log)
                 elif validator_kind:
-                    self._log(on_log, f"Validator '{validator_kind}' is not implemented — skipping")
+                    self._log(on_log, f"Validator '{validator_kind}' is not implemented 鈥?skipping")
                 os.rename(str(extract_tmp), str(content_target))
                 self._log(on_log, f"Extracted to {content_target}")
             except Exception:
@@ -184,7 +189,7 @@ class ResourceProvisioner:
                 alias.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     os.symlink(
-                        str(content_target.relative_to(alias.parent, walk_up=True)),
+                        _relative_symlink_target(content_target, alias.parent),
                         str(alias),
                         target_is_directory=True,
                     )
@@ -249,7 +254,7 @@ class ResourceProvisioner:
 
         # Check for 206 Partial Content when resuming
         if existing_size > 0 and resp.status != 206:
-            self._log(on_log, f"Server returned {resp.status} instead of 206 — restarting from scratch")
+            self._log(on_log, f"Server returned {resp.status} instead of 206 鈥?restarting from scratch")
             dest.unlink(missing_ok=True)
             return self._download(url, dest, expected_size, False, on_progress, on_log)
 
@@ -301,7 +306,7 @@ class ResourceProvisioner:
             nonlocal file_count, total_bytes
             file_count += 1
             if file_count > MAX_FILES:
-                raise RuntimeError(f"Archive contains >{MAX_FILES} files — rejected")
+                raise RuntimeError(f"Archive contains >{MAX_FILES} files 鈥?rejected")
             try:
                 path.resolve().relative_to(target_resolved)
             except ValueError:
@@ -315,7 +320,7 @@ class ResourceProvisioner:
                         info = zf.getinfo(name)
                         total_bytes += info.file_size
                         if total_bytes > MAX_TOTAL_BYTES:
-                            raise RuntimeError(f"Archive exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB — rejected")
+                            raise RuntimeError(f"Archive exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB 鈥?rejected")
                     except (KeyError, OSError):
                         pass
                 zf.extractall(target)
@@ -326,7 +331,7 @@ class ResourceProvisioner:
                     _check_container((target / member.name).resolve())
                     total_bytes += member.size
                     if total_bytes > MAX_TOTAL_BYTES:
-                        raise RuntimeError(f"Archive exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB — rejected")
+                        raise RuntimeError(f"Archive exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB 鈥?rejected")
                     # Reject symlinks that point outside the extract root
                     if member.issym() or member.islnk():
                         link_dest = (target / member.linkname).resolve()
@@ -338,7 +343,7 @@ class ResourceProvisioner:
         else:
             # Treat unknown formats as raw single-file copy (with size limit)
             if archive_path.stat().st_size > MAX_TOTAL_BYTES:
-                raise RuntimeError(f"File exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB — rejected")
+                raise RuntimeError(f"File exceeds {MAX_TOTAL_BYTES // (1024**3)} GiB 鈥?rejected")
             shutil.copy2(archive_path, target / archive_path.name)
 
         # If a subdir should be extracted, move its contents up and remove it
@@ -367,7 +372,7 @@ class ResourceProvisioner:
             if not p.exists():
                 missing.append(rel)
         if missing:
-            raise RuntimeError(f"YOLO dataset validation failed — missing paths: {missing}")
+            raise RuntimeError(f"YOLO dataset validation failed 鈥?missing paths: {missing}")
 
         yaml_rel = validation.get("yaml_relative_path", "")
         if yaml_rel:
@@ -383,7 +388,7 @@ class ResourceProvisioner:
                     if key not in data:
                         self._log(on_log, f"Dataset YAML missing recommended key: '{key}'")
             except ImportError:
-                self._log(on_log, "PyYAML not available — skipping YAML parse validation")
+                self._log(on_log, "PyYAML not available 鈥?skipping YAML parse validation")
 
     # ------------------------------------------------------------------
     # Internal: utilities
@@ -452,7 +457,7 @@ class ResourceProvisioner:
             return 0
 
 
-# ── Module-level helpers ──────────────────────────────────────────────────
+# 鈹€鈹€ Module-level helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _receipt_filename(cache_key: str) -> str:

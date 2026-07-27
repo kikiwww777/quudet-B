@@ -1,12 +1,12 @@
-"""Unified dispatch — node scheduling for local and remote execution.
+"""Unified dispatch 鈥?node scheduling for local and remote execution.
 
 All execution nodes (local Windows, remote Linux GPU servers) claim jobs
 via ``claim-next`` and report progress via ``events``.  Authentication is
-token-based — local nodes auto-generate their token via ``agent.runner``.
+token-based 鈥?local nodes auto-generate their token via ``agent.runner``.
 
 Design:
-    API creates job → status=PENDING_ASSIGN → claim-next → agent executes
-    → events(log/progress/metrics/status) → terminal state
+    API creates job 鈫?status=PENDING_ASSIGN 鈫?claim-next 鈫?agent executes
+    鈫?events(log/progress/metrics/status) 鈫?terminal state
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -65,6 +66,26 @@ def _require_node(db: Session, node_id: str, token: str) -> ComputeNode:
     node.status = "ONLINE"
     return node
 
+def _reserve_node_slot(db: Session, node_id: str) -> bool:
+    """Atomically reserve one execution slot when the node has capacity."""
+    result = db.execute(
+        update(ComputeNode)
+        .where(
+            ComputeNode.id == node_id,
+            ComputeNode.running_jobs < ComputeNode.max_concurrent_jobs,
+        )
+        .values(running_jobs=ComputeNode.running_jobs + 1)
+    )
+    return result.rowcount == 1
+
+
+def _release_node_slot(db: Session, node_id: str) -> None:
+    """Release a slot reserved before a job could be claimed."""
+    db.execute(
+        update(ComputeNode)
+        .where(ComputeNode.id == node_id, ComputeNode.running_jobs > 0)
+        .values(running_jobs=ComputeNode.running_jobs - 1)
+    )
 
 def _dataset_source_root(upload: UploadedDataset) -> Path:
     ep = (upload.extracted_path or "").strip()
@@ -117,7 +138,7 @@ def claim_next_job(
 
     node = _require_node(db, node_id, token)
 
-    if node.running_jobs >= max(1, node.max_concurrent_jobs):
+    if not _reserve_node_slot(db, node_id):
         db.commit()
         return DispatchClaimResponse(claimed=False, reason="node-capacity-reached")
 
@@ -169,7 +190,7 @@ def claim_next_job(
         .first()
     )
     if job is not None and not _job_matches_node(job):
-        job = None  # assigned job doesn't match — skip to fallback
+        job = None  # assigned job doesn't match 鈥?skip to fallback
 
     if job is None:
         # Auto-claim unassigned jobs that match this node.
@@ -189,6 +210,7 @@ def claim_next_job(
             job.assigned_node_id = node_id
 
     if job is None:
+        _release_node_slot(db, node_id)
         db.commit()
         return DispatchClaimResponse(claimed=False, reason="no-pending-job")
 
@@ -202,7 +224,6 @@ def claim_next_job(
         job_dir = get_settings().artifacts_dir / job.id
         job_dir.mkdir(parents=True, exist_ok=True)
         job.log_path = str(job_dir / "run.log")
-    node.running_jobs = max(0, node.running_jobs) + 1
     db.commit()
 
     # Cascade RUNNING status to experiment group
