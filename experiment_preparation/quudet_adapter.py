@@ -269,6 +269,11 @@ def _do_check(
 
     actions: list[dict] = []
     resource_plans: list[dict] = []
+    explicit_source_urls = {
+        str(resource.get("resource_id") or "").strip(): str((resource.get("source") or {}).get("url") or resource.get("url") or "")
+        for resource in explicit_resources
+        if str(resource.get("resource_id") or "").strip()
+    }
 
     _upsert_explicit_manifests(db_session, explicit_resources)
 
@@ -293,7 +298,7 @@ def _do_check(
             })
             return _blocked(actions)
 
-        manifest = manifests[0]
+        manifest = _select_manifest(manifests, explicit_source_urls.get(rid, ""))
         integrity = manifest.integrity or {}
 
         # 2. Check if this manifest needs human approval
@@ -464,6 +469,24 @@ def _upsert_explicit_manifests(db_session, resources: list[dict]) -> None:
         changed = True
     if changed:
         db_session.commit()
+
+
+def _select_manifest(manifests: list[Any], source_url: str) -> Any:
+    """Prefer an approved manifest for the requested source URL."""
+    matching_source = [
+        manifest
+        for manifest in manifests
+        if source_url and str((manifest.source or {}).get("url") or "") == source_url
+    ]
+    candidates = matching_source or manifests
+    return next(
+        (
+            manifest
+            for manifest in candidates
+            if str((manifest.integrity or {}).get("archive_sha256") or "")
+        ),
+        candidates[0],
+    )
 
 
 def _blocked(actions: list[dict]) -> dict[str, Any]:

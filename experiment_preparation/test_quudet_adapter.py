@@ -91,6 +91,31 @@ class TestQuuDetPreparationGate(unittest.TestCase):
 
         self.assertIsNone(quudet_adapter._select_target_node(resource_plans))
 
+    def test_select_manifest_reuses_verified_integrity_for_same_url(self):
+        class Manifest:
+            def __init__(self, source, integrity, approved):
+                self.source = source
+                self.integrity = integrity
+                self.integrity_approved = approved
+
+        verified = Manifest(
+            {"url": "https://example.org/data.zip"},
+            {"archive_sha256": "verified"},
+            False,
+        )
+        unverified = Manifest(
+            {"url": "https://example.org/data.zip"},
+            {},
+            False,
+        )
+
+        selected = quudet_adapter._select_manifest(
+            [unverified, verified],
+            "https://example.org/data.zip",
+        )
+
+        self.assertIs(selected, verified)
+
 
 if __name__ == "__main__":
     unittest.main()
