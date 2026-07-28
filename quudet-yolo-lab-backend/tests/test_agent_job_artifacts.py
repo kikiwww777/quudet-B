@@ -6,6 +6,24 @@ from app.agent import runner
 
 
 class TestAgentJobArtifacts(unittest.TestCase):
+    def test_metric_collection_disables_cross_job_results_fallback(self):
+        paths = runner.get_agent_paths()
+        job = {"id": "job-no-fallback", "job_type": "train", "payload": {}}
+        captured = {}
+
+        def resolve(**kwargs):
+            captured.update(kwargs)
+            return None
+
+        with (
+            patch.object(runner, "get_agent_paths", return_value=paths),
+            patch.object(runner, "resolve_results_csv_for_train", side_effect=resolve),
+        ):
+            runner._metrics_for_job(job)
+
+        self.assertIn("allow_fallback", captured)
+        self.assertFalse(captured["allow_fallback"])
+
     def test_each_job_uses_a_unique_artifact_output_directory(self):
         paths = runner.get_agent_paths()
         job_id = "job-unique-output"

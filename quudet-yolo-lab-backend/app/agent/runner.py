@@ -324,6 +324,7 @@ def _metrics_for_job(job: dict) -> dict | None:
         job_dir=job_dir,
         started_at=_job_started_at(job),
         job_type=str(job.get("job_type") or ""),
+        allow_fallback=False,
     )
     if not csv_path:
         return None

@@ -41,7 +41,16 @@ def epoch_progress(x: list[Any], total_epochs: int, *, status: str = '') -> dict
     return {'epochs_done': done, 'epochs_total': total, 'progress_percent': percent}
 
 
-def resolve_results_csv_for_train(*, payload: dict[str, Any], work_dir: Path, job_dir: Path, started_at=None, log_text=None, job_type=None) -> Path | None:
+def resolve_results_csv_for_train(
+    *,
+    payload: dict[str, Any],
+    work_dir: Path,
+    job_dir: Path,
+    started_at=None,
+    log_text=None,
+    job_type=None,
+    allow_fallback: bool = True,
+) -> Path | None:
     direct = Path(str(payload.get('_metrics_source_path') or ''))
     if str(direct) and direct.is_file():
         return direct
@@ -54,5 +63,7 @@ def resolve_results_csv_for_train(*, payload: dict[str, Any], work_dir: Path, jo
         candidate = work_dir / project / name / 'results.csv'
         if candidate.is_file():
             return candidate
+    if not allow_fallback:
+        return None
     candidates = list(work_dir.glob('runs/**/results.csv'))
     return max(candidates, key=lambda item: item.stat().st_mtime) if candidates else None
