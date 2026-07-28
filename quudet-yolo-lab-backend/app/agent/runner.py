@@ -428,6 +428,8 @@ def execute_job(job: dict) -> None:
 
     payload["project"] = str(paths.artifacts_dir)
     payload["name"] = job_id
+    job = dict(job)
+    job["payload"] = payload
     cmd = build_command(
         job_type,
         payload,

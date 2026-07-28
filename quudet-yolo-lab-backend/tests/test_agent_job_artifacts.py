@@ -26,12 +26,17 @@ class TestAgentJobArtifacts(unittest.TestCase):
             captured["job_dir"] = job_dir
             return ["python", "-c", "pass"]
 
+        def collect_metrics(metric_job):
+            captured["metrics_payload"] = dict(metric_job["payload"])
+            return None
+
         process = type("Process", (), {"stdout": None, "poll": lambda self: 0, "wait": lambda self: 0, "pid": 1})()
         job = {"id": job_id, "job_type": "train", "payload": payload}
 
         with (
             patch.object(runner, "get_agent_paths", return_value=paths),
             patch.object(runner, "build_command", side_effect=build),
+            patch.object(runner, "_metrics_for_job", side_effect=collect_metrics),
             patch.object(runner, "subprocess") as subprocess_module,
             patch.object(runner, "_emit_event"),
         ):
@@ -41,3 +46,5 @@ class TestAgentJobArtifacts(unittest.TestCase):
         self.assertEqual(captured["payload"]["project"], str(paths.artifacts_dir))
         self.assertEqual(captured["payload"]["name"], job_id)
         self.assertEqual(captured["job_dir"], paths.artifacts_dir / job_id)
+        self.assertEqual(captured["metrics_payload"]["project"], str(paths.artifacts_dir))
+        self.assertEqual(captured["metrics_payload"]["name"], job_id)
