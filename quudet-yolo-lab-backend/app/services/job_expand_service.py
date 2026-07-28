@@ -37,6 +37,10 @@ def expand_runs(
     base = base_payload or {}
     expanded: list[dict[str, Any]] = []
     idx = 0
+    augmentation_comparison = any(
+        "mosaic" in run_spec.payload or "mixup" in run_spec.payload
+        for run_spec in group.runs
+    )
 
     for run_spec in group.runs:
         seeds = _normalize_seeds(run_spec)
@@ -51,6 +55,8 @@ def expand_runs(
             name = payload.get("name") or _default_run_name(run_spec.role, seed, idx)
             payload["project"] = project
             payload["name"] = name
+            if augmentation_comparison:
+                _normalize_close_mosaic(payload)
 
             if run_spec.required_gpu:
                 payload["required_gpu"] = True
@@ -71,6 +77,16 @@ def expand_runs(
             idx += 1
 
     return expanded
+
+
+def _normalize_close_mosaic(payload: dict[str, Any]) -> None:
+    try:
+        epochs = int(payload.get("epochs") or 0)
+        close_mosaic = int(payload.get("close_mosaic") or 0)
+    except (TypeError, ValueError):
+        return
+    if "close_mosaic" not in payload or (epochs and close_mosaic >= epochs):
+        payload["close_mosaic"] = 0
 
 
 def _normalize_seeds(run_spec: ExperimentRunCreate) -> list[int | None]:
