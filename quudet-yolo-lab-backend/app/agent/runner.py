@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +89,8 @@ _RUNTIME_STATE = {
     "last_output_at": None,
     "exit_code": None,
 }
+_STATIC_CAPABILITIES: dict | None = None
+_AGENT_INSTANCE_ID = str(uuid.uuid4())
 
 
 def _set_runtime(**values: object) -> None:
@@ -115,6 +118,12 @@ def collect_node_capabilities() -> dict:
     is local or remote — and cannot be reliably inferred from IP or hostname
     because topology may change over time.
     """
+    global _STATIC_CAPABILITIES
+    if _STATIC_CAPABILITIES is not None:
+        caps = dict(_STATIC_CAPABILITIES)
+        caps["agent_runtime"] = _runtime_snapshot()
+        return caps
+
     caps: dict = {
         "node_kind": _env("NODE_KIND", "local"),
         "hostname": socket.gethostname(),
@@ -123,6 +132,7 @@ def collect_node_capabilities() -> dict:
         "os_release": platform.release(),
         "python_version": sys.version.split()[0],
         "started_at": datetime.utcnow().isoformat(),
+        "agent_instance_id": _AGENT_INSTANCE_ID,
         "path_style": "windows" if os.name == "nt" else "posix",
     }
 
@@ -177,8 +187,10 @@ def collect_node_capabilities() -> dict:
         caps["memory_gb"] = None
         caps["disk_free_gb"] = None
 
-    caps["agent_runtime"] = _runtime_snapshot()
-    return caps
+    _STATIC_CAPABILITIES = caps
+    result = dict(caps)
+    result["agent_runtime"] = _runtime_snapshot()
+    return result
 
 
 def _post(path: str, body: dict) -> dict:

@@ -53,7 +53,8 @@ def check_experiment_group(body: dict) -> dict[str, Any]:
     sweep = body.get("sweep")
 
     # Extract resource hints from the experiment spec
-    resource_ids = _collect_resource_ids(dataset_name, runs, sweep)
+    explicit_resources = [item for item in (body.get("resources") or []) if isinstance(item, dict)]
+    resource_ids = _collect_resource_ids(dataset_name, runs, sweep, explicit_resources)
     required_gpu = _requires_gpu(runs, sweep)
 
     if not resource_ids:
@@ -78,6 +79,7 @@ def check_experiment_group(body: dict) -> dict[str, Any]:
         resource_ids,
         required_gpu=required_gpu,
         requested_node_id=next(iter(requested_node_ids), None),
+        explicit_resources=explicit_resources,
     )
 
 
@@ -95,6 +97,7 @@ def _collect_resource_ids(
     dataset_name: str,
     runs: list[dict],
     sweep: dict | None,
+    explicit_resources: list[dict] | None = None,
 ) -> set[str]:
     """Collect all AR-managed resource IDs referenced by the experiment spec.
 
@@ -103,6 +106,11 @@ def _collect_resource_ids(
     IDs directly instead of maintaining the compatibility map below.
     """
     ids: set[str] = set()
+
+    for resource in explicit_resources or []:
+        resource_id = str(resource.get("resource_id") or "").strip()
+        if resource_id:
+            ids.add(resource_id)
 
     if dataset_name:
         # Map well-known dataset names to AR resource IDs.
@@ -219,6 +227,7 @@ def _check_resources_via_backend(
     *,
     required_gpu: bool,
     requested_node_id: str | None,
+    explicit_resources: list[dict] | None = None,
 ) -> dict[str, Any]:
     """Query the QuuDet database for manifests and node inventory."""
     db = _get_backend_session()
@@ -240,6 +249,7 @@ def _check_resources_via_backend(
             resource_ids,
             required_gpu=required_gpu,
             requested_node_id=requested_node_id,
+            explicit_resources=explicit_resources or [],
         )
     finally:
         db.close()
@@ -251,6 +261,7 @@ def _do_check(
     *,
     required_gpu: bool,
     requested_node_id: str | None,
+    explicit_resources: list[dict],
 ) -> dict[str, Any]:
     """Core check logic with an active DB session."""
     from app.models.compute_node import ComputeNode
@@ -258,6 +269,8 @@ def _do_check(
 
     actions: list[dict] = []
     resource_plans: list[dict] = []
+
+    _upsert_explicit_manifests(db_session, explicit_resources)
 
     for rid in resource_ids:
         # 1. Find active manifests for this resource
@@ -390,6 +403,67 @@ def _do_check(
             "checked_at": datetime.utcnow().isoformat(),
         },
     }
+
+
+def _upsert_explicit_manifests(db_session, resources: list[dict]) -> None:
+    """Persist AR-provided manifests without any dataset-name lookup.
+
+    A resource is keyed by its semantic manifest hash, so repeated AR polling
+    is idempotent.  URLs without a checksum remain manual-approval-only;
+    the agent never downloads an unverified artifact automatically.
+    """
+    if not resources:
+        return
+    from app.models.resource_manifest import ResourceManifest
+
+    changed = False
+    for raw in resources:
+        resource_id = str(raw.get("resource_id") or "").strip()
+        source = dict(raw.get("source") or {})
+        if not source.get("url") and raw.get("url"):
+            source["url"] = str(raw["url"])
+        if not resource_id or not source.get("url"):
+            continue
+        integrity = dict(raw.get("integrity") or {})
+        delivery = dict(raw.get("delivery") or {})
+        validation = dict(raw.get("validation") or {})
+        manual_fallback = dict(raw.get("manual_fallback") or {})
+        if not integrity.get("archive_sha256"):
+            manual_fallback.setdefault("allowed", True)
+            manual_fallback.setdefault("instructions", "Provide the archive SHA256, then resubmit this manifest.")
+        manifest_data = {
+            "resource_id": resource_id,
+            "resource_type": raw.get("resource_type", "dataset"),
+            "version": str(raw.get("version") or "discovered"),
+            "source": source,
+            "integrity": integrity,
+            "delivery": delivery,
+            "validation": validation,
+            "manual_fallback": manual_fallback,
+        }
+        content_hash = ResourceManifest.compute_cache_key(manifest_data)
+        exists = db_session.query(ResourceManifest).filter(
+            ResourceManifest.manifest_content_hash == content_hash
+        ).first()
+        if exists is not None:
+            continue
+        db_session.add(ResourceManifest(
+            id=str(uuid.uuid4()),
+            resource_id=resource_id,
+            resource_type=str(manifest_data["resource_type"]),
+            version=manifest_data["version"],
+            display_name=str(raw.get("display_name") or resource_id),
+            source=source,
+            integrity=integrity,
+            delivery=delivery,
+            validation=validation,
+            manual_fallback=manual_fallback,
+            provenance=dict(raw.get("provenance") or {}),
+            manifest_content_hash=content_hash,
+        ))
+        changed = True
+    if changed:
+        db_session.commit()
 
 
 def _blocked(actions: list[dict]) -> dict[str, Any]:

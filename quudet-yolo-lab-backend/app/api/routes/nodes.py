@@ -111,7 +111,7 @@ def node_heartbeat(
     node = _get_node_or_404(db, node_id, body.token)
     node.running_jobs = _merge_reported_running_jobs(node.running_jobs, body.running_jobs)
     if body.capabilities:
-        node.capabilities = body.capabilities
+        node.capabilities = _merge_node_capabilities(node.capabilities, body.capabilities)
     # Store resource cache inventory from Linux nodes
     if body.cache_root is not None:
         node.cache_root = body.cache_root

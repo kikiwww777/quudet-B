@@ -42,6 +42,7 @@ class ExperimentGroupCreate(BaseModel):
     paper_ids: list[str] | None = None
     dataset_name: str | None = None
     primary_metric: str = "metrics/mAP50-95(B)"
+    resources: list[dict[str, Any]] = Field(default_factory=list)
     runs: list[ExperimentRunCreate] = Field(default_factory=list)
     sweep: SweepSpec | None = None
 

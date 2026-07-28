@@ -1,7 +1,7 @@
 ﻿import unittest
 from types import SimpleNamespace
 
-from app.api.routes.nodes import _mark_node_offline, _merge_reported_running_jobs
+from app.api.routes.nodes import _mark_node_offline, _merge_node_capabilities, _merge_reported_running_jobs
 
 
 class NodeHeartbeatCapacityTests(unittest.TestCase):
@@ -18,6 +18,14 @@ class NodeHeartbeatCapacityTests(unittest.TestCase):
 
         self.assertEqual(node.status, "OFFLINE")
         self.assertEqual(node.running_jobs, 0)
+
+    def test_idle_duplicate_agent_cannot_erase_active_runtime(self) -> None:
+        current = {"agent_runtime": {"active_job_id": "job-1", "active_pid": 123}}
+        reported = {"agent_runtime": {"active_job_id": None, "active_pid": None}}
+
+        merged = _merge_node_capabilities(current, reported)
+
+        self.assertEqual(merged["agent_runtime"]["active_job_id"], "job-1")
 
 
 if __name__ == "__main__":

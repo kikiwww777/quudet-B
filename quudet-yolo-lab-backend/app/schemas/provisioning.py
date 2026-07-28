@@ -31,6 +31,9 @@ class ManifestDelivery(BaseModel):
     cache_key: str | None = Field(default=None, exclude=True)  # server-derived; input ignored
     target_relative_path: str | None = None
     allow_resume: bool = True
+    preparer_kind: str = "yolo_ready"
+    output_data_yaml_path: str | None = None
+    preparer_options: dict[str, Any] = Field(default_factory=dict)
 
 
 class ManifestValidation(BaseModel):

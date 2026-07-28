@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,6 +39,7 @@ from app.schemas.provisioning import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/provisioning", tags=["provisioning"])
+PROVISION_RECLAIM_SECONDS = 120
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,6 +193,21 @@ def claim_next_provision(
         raise HTTPException(422, "token is required")
 
     node = _require_node(db, node_id, token)
+
+    # Reclaim a plan after an agent restart. The provisioner stages downloads
+    # by provision ID, therefore reclaiming the same plan resumes its partial
+    # archive instead of starting a competing transfer.
+    stale_before = datetime.utcnow() - timedelta(seconds=PROVISION_RECLAIM_SECONDS)
+    db.query(ProvisionPlan).filter(
+        ProvisionPlan.node_id == node_id,
+        ProvisionPlan.state.in_(["DOWNLOADING", "VERIFYING"]),
+        ProvisionPlan.last_heartbeat_at.isnot(None),
+        ProvisionPlan.last_heartbeat_at < stale_before,
+    ).update({
+        ProvisionPlan.state: "PENDING",
+        ProvisionPlan.error_message: "Interrupted provision reclaimed by restarted agent; resuming cached partial download.",
+    }, synchronize_session=False)
+    db.flush()
 
     # Check for existing PENDING plans assigned to this node
     plan = (

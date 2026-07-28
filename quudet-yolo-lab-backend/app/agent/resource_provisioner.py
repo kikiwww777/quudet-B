@@ -114,6 +114,7 @@ class ResourceProvisioner:
         allow_resume = delivery.get("allow_resume", True)
         required_paths = validation.get("required_paths", [])
         validator_kind = validation.get("kind", "")
+        output_data_yaml_path = delivery.get("output_data_yaml_path") or validation.get("yaml_relative_path")
 
         self._log(on_log, f"Provisioning {m.get('resource_id')} @ {cache_key[:16]}...  url={archive_url}")
 
@@ -199,6 +200,10 @@ class ResourceProvisioner:
                 self._log(on_log, f"Alias created: {alias} -> {content_target}")
 
         # ---- Step 7: Write receipt ----
+        if output_data_yaml_path:
+            output_path = content_target / output_data_yaml_path
+            if not output_path.is_file():
+                raise RuntimeError(f"Manifest output data yaml not found: {output_data_yaml_path}")
         local_uri = f"cache://{target_relative_path}" if target_relative_path else f"cache://content/{cache_key}"
         resource_id = m.get("resource_id", "")
         receipt = _build_receipt(
@@ -209,6 +214,7 @@ class ResourceProvisioner:
             bytes_downloaded=bytes_downloaded,
             local_uri=local_uri,
             validator_kind=validator_kind,
+            output_data_yaml_path=output_data_yaml_path,
         )
         self._write_receipt(cache_key, receipt)
         self._log(on_log, f"Receipt written for {cache_key[:16]}...")
@@ -478,6 +484,7 @@ def _build_receipt(
     bytes_downloaded: int,
     local_uri: str,
     validator_kind: str,
+    output_data_yaml_path: str | None = None,
 ) -> dict:
     """Build a standardised provision receipt dict."""
     return {
@@ -488,6 +495,7 @@ def _build_receipt(
         "archive_sha256": archive_sha256,
         "bytes_downloaded": bytes_downloaded,
         "local_uri": local_uri,
+        "output_data_yaml_path": output_data_yaml_path,
         "validator": {"kind": validator_kind, "result": "passed"} if validator_kind else {},
         "completed_at": datetime.utcnow().isoformat(),
     }
