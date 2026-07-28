@@ -23,9 +23,17 @@ class NodeHeartbeatCapacityTests(unittest.TestCase):
         current = {"agent_runtime": {"active_job_id": "job-1", "active_pid": 123}}
         reported = {"agent_runtime": {"active_job_id": None, "active_pid": None}}
 
-        merged = _merge_node_capabilities(current, reported)
+        merged = _merge_node_capabilities(current, reported, preserve_active_runtime=True)
 
         self.assertEqual(merged["agent_runtime"]["active_job_id"], "job-1")
+
+    def test_idle_heartbeat_clears_runtime_after_slot_is_released(self) -> None:
+        current = {"agent_runtime": {"active_job_id": "job-1", "active_pid": 123}}
+        reported = {"agent_runtime": {"active_job_id": None, "active_pid": None}}
+
+        merged = _merge_node_capabilities(current, reported, preserve_active_runtime=False)
+
+        self.assertIsNone(merged["agent_runtime"]["active_job_id"])
 
 
 if __name__ == "__main__":

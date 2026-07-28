@@ -32,13 +32,22 @@ def _merge_reported_running_jobs(current: int, reported: int) -> int:
     return max(0, current, reported)
 
 
-def _merge_node_capabilities(current: dict | None, reported: dict | None) -> dict:
-    """Preserve an active agent's process telemetry from idle duplicate agents."""
+def _merge_node_capabilities(
+    current: dict | None,
+    reported: dict | None,
+    *,
+    preserve_active_runtime: bool = False,
+) -> dict:
+    """Preserve active telemetry only while the server still owns a job slot."""
     merged = dict(current or {})
     merged.update(reported or {})
     current_runtime = (current or {}).get("agent_runtime") or {}
     reported_runtime = (reported or {}).get("agent_runtime") or {}
-    if current_runtime.get("active_job_id") and not reported_runtime.get("active_job_id"):
+    if (
+        preserve_active_runtime
+        and current_runtime.get("active_job_id")
+        and not reported_runtime.get("active_job_id")
+    ):
         merged["agent_runtime"] = current_runtime
     return merged
 
@@ -94,7 +103,11 @@ def register_node(
         node.display_name = body.display_name
         node.base_url = body.base_url
         node.token_hash = token_hash
-        node.capabilities = _merge_node_capabilities(node.capabilities, body.capabilities)
+        node.capabilities = _merge_node_capabilities(
+            node.capabilities,
+            body.capabilities,
+            preserve_active_runtime=node.running_jobs > 0,
+        )
         node.max_concurrent_jobs = max(1, body.max_concurrent_jobs)
         node.status = "ONLINE"
         node.last_seen_at = now
@@ -111,7 +124,11 @@ def node_heartbeat(
     node = _get_node_or_404(db, node_id, body.token)
     node.running_jobs = _merge_reported_running_jobs(node.running_jobs, body.running_jobs)
     if body.capabilities:
-        node.capabilities = _merge_node_capabilities(node.capabilities, body.capabilities)
+        node.capabilities = _merge_node_capabilities(
+            node.capabilities,
+            body.capabilities,
+            preserve_active_runtime=node.running_jobs > 0,
+        )
     # Store resource cache inventory from Linux nodes
     if body.cache_root is not None:
         node.cache_root = body.cache_root
