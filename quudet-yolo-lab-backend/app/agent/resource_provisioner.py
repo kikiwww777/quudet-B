@@ -171,6 +171,13 @@ class ResourceProvisioner:
 
             try:
                 self._extract(archive_path, extract_tmp, archive_format, extract_subdir, on_log)
+                if archive_format == "raw" and output_data_yaml_path:
+                    downloaded_files = [path for path in extract_tmp.iterdir() if path.is_file()]
+                    if len(downloaded_files) != 1:
+                        raise RuntimeError("Raw resource extraction did not produce exactly one file")
+                    output_path = extract_tmp / output_data_yaml_path
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(downloaded_files[0]), str(output_path))
                 # ---- Step 5: Validate ----
                 if validator_kind == "yolo_dataset":
                     self._validate_yolo_dataset(extract_tmp, required_paths, validation, on_log)

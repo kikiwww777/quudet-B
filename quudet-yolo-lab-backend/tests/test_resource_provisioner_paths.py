@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.schemas.provisioning import ManifestDelivery
-from app.agent.resource_provisioner import _relative_symlink_target
+from app.agent.resource_provisioner import ResourceProvisioner, _relative_symlink_target
 
 
 class ResourceProvisionerPathTests(unittest.TestCase):
@@ -27,6 +27,22 @@ class ResourceProvisionerPathTests(unittest.TestCase):
 
         self.assertEqual(delivery.output_data_yaml_path, "prepared/data.yaml")
         self.assertEqual(delivery.preparer_kind, "custom")
+
+    def test_raw_manifest_can_deliver_a_named_yaml_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            provisioner = ResourceProvisioner(root)
+            archive = root / "source.raw"
+            archive.write_text("path: ../datasets/VOC\n", encoding="utf-8")
+            target = root / "output"
+            target.mkdir()
+
+            provisioner._extract(archive, target, "raw", None, None)
+            source = next(target.iterdir())
+            output = target / "VOC.yaml"
+            source.rename(output)
+
+            self.assertTrue(output.is_file())
 
 
 if __name__ == "__main__":
