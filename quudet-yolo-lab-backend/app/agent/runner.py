@@ -426,6 +426,8 @@ def execute_job(job: dict) -> None:
             _emit_event(job_id, "status", {"status": "FAILED"})
             return
 
+    payload["project"] = str(paths.artifacts_dir)
+    payload["name"] = job_id
     cmd = build_command(
         job_type,
         payload,
