@@ -31,6 +31,17 @@ class NodeHeartbeatRequest(BaseModel):
     resource_cache: list[CacheResourceEntry] | None = None
 
 
+class NodeControlCommandRequest(BaseModel):
+    action: Literal["RECONNECT", "RESTART"]
+
+
+class NodeControlCommandAck(BaseModel):
+    token: str = Field(min_length=4, max_length=256)
+    command_id: str = Field(min_length=8, max_length=64)
+    result: str = Field(min_length=1, max_length=256)
+    error: str | None = Field(default=None, max_length=512)
+
+
 class NodeRead(BaseModel):
     id: str
     display_name: str

@@ -362,3 +362,19 @@ sudo systemctl status quudet-agent.service
 ---
 
 *文档版本：与仓库代码 `CLUSTER_ENABLED` / `app.agent.runner` / `dispatch` 路由实现同步整理；若你升级了后端逻辑，请以代码为准并更新本节。*
+
+---
+
+## 节点自愈运维（断线后无需手工重连）
+
+在 Linux 节点仓库根目录执行：
+
+```bash
+./scripts/install-linux-node-service.sh <linux-user> <node-id> <backend-dir>
+sudoedit /etc/quudet-agent/<linux-user>.env
+sudo systemctl restart quudet-agent@<linux-user>
+```
+
+环境文件至少包含 `MASTER_API_BASE`、`NODE_TOKEN`，安装脚本会写入 `NODE_ID`。服务以 `systemd` 常驻，开机启动、runner 退出后自动拉起；Agent 对注册、心跳、资源预置与任务领取采用有上限的退避重试。
+
+验收：在节点管理页分别执行“立即重连”“重新调度失联任务”“重启 Agent”；确认控制命令有应答、服务在 `systemctl status quudet-agent@<linux-user>` 中恢复为 active，并确认断线任务只在重试次数未耗尽时回到调度队列。前端不会 SSH 到 Linux，也不会传递任意 Shell 命令。
