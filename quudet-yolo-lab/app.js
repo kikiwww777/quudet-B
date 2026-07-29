@@ -57,6 +57,7 @@ const monitorMetricsValues = document.querySelector("#monitor-metrics-values");
 const monitorNodeSelect = document.querySelector("#sel-monitor-node");
 const monitorJobSelect = document.querySelector("#sel-monitor-job");
 const nodesRefreshBtn = document.querySelector("#nodes-refresh-btn");
+const nodesReconcileBtn = document.querySelector("#nodes-reconcile-btn");
 const nodesSummary = document.querySelector("#nodes-summary");
 const nodesTableBody = document.querySelector("#nodes-table-body");
 const trainNodeSelect = document.querySelector("#sel-train-node");
@@ -451,7 +452,7 @@ async function refreshNodes() {
       nodesTableBody.innerHTML = "";
       if (!nodeRows.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = "<td colspan='9'>暂无节点（请先启动 agent）</td>";
+        tr.innerHTML = "<td colspan='10'>暂无节点（请先启动 agent）</td>";
         nodesTableBody.appendChild(tr);
       } else {
         nodeRows.forEach((n) => {
@@ -470,7 +471,11 @@ async function refreshNodes() {
             <td class="td-num">${safeText(n.max_concurrent_jobs)}</td>
             <td class="td-num">${safeText(n.running_jobs)}</td>
             <td class="td-time">${n.last_seen_at ? formatDisplayTime(n.last_seen_at) : "-"}</td>
+            <td><button class="ghost node-command" data-node-id="${safeText(n.id)}" data-action="RECONNECT" type="button">立即重连</button> <button class="ghost node-command" data-node-id="${safeText(n.id)}" data-action="RESTART" type="button">重启 Agent</button></td>
           `;
+          tr.querySelectorAll(".node-command").forEach((button) => {
+            button.addEventListener("click", () => submitNodeCommand(button));
+          });
           nodesTableBody.appendChild(tr);
         });
       }
@@ -486,8 +491,42 @@ async function refreshNodes() {
       nodesSummary.textContent = "暂无节点数据";
     }
     if (nodesTableBody) {
-      nodesTableBody.innerHTML = "<tr><td colspan='9'>暂无节点数据</td></tr>";
+      nodesTableBody.innerHTML = "<tr><td colspan='10'>暂无节点数据</td></tr>";
     }
+  }
+}
+
+async function submitNodeCommand(button) {
+  const nodeId = button.dataset.nodeId;
+  const action = button.dataset.action;
+  if (!nodeId || !action) return;
+  button.disabled = true;
+  try {
+    await apiFetch(`/api/v1/nodes/${encodeURIComponent(nodeId)}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    await refreshNodes();
+  } catch (e) {
+    alert(e.message || "节点操作失败");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function reconcileExpiredWork() {
+  if (!nodesReconcileBtn) return;
+  nodesReconcileBtn.disabled = true;
+  try {
+    const result = await apiFetch("/api/v1/nodes/reconcile-expired-work", { method: "POST" });
+    alert(`已回收 ${result.recovered_job_ids?.length || 0} 个任务；达到重试上限 ${result.exhausted_job_ids?.length || 0} 个。`);
+    await refreshNodes();
+    await refreshJobs();
+  } catch (e) {
+    alert(e.message || "重新调度失败");
+  } finally {
+    nodesReconcileBtn.disabled = false;
   }
 }
 
@@ -1503,6 +1542,10 @@ if (nodesRefreshBtn) {
   nodesRefreshBtn.addEventListener("click", () => {
     refreshNodes().catch((e) => alert(e.message));
   });
+}
+
+if (nodesReconcileBtn) {
+  nodesReconcileBtn.addEventListener("click", reconcileExpiredWork);
 }
 
 // 实时监控功能 - 定时刷新训练曲线

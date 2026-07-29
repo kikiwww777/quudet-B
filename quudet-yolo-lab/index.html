@@ -281,10 +281,11 @@
           <h2>节点管理</h2>
           <div class="button-row">
             <button id="nodes-refresh-btn" class="ghost" type="button">刷新节点</button>
+            <button id="nodes-reconcile-btn" class="ghost" type="button">重新调度失联任务</button>
             <div id="nodes-summary" class="muted"></div>
           </div>
           <table>
-            <thead><tr><th>节点ID</th><th>名称</th><th>状态</th><th>类型</th><th>OS</th><th>GPU</th><th>并发</th><th>运行中</th><th>最后心跳</th></tr></thead>
+            <thead><tr><th>节点ID</th><th>名称</th><th>状态</th><th>类型</th><th>OS</th><th>GPU</th><th>并发</th><th>运行中</th><th>最后心跳</th><th>操作</th></tr></thead>
             <tbody id="nodes-table-body"></tbody>
           </table>
         </div>

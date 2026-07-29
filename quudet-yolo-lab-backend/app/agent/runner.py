@@ -79,6 +79,24 @@ NODE_MAX_CONCURRENCY = max(1, int(_env("NODE_MAX_CONCURRENCY", "1")))
 POLL_INTERVAL = max(2, int(_env("POLL_INTERVAL_SECONDS", "4")))
 HEARTBEAT_INTERVAL = max(3, int(_env("HEARTBEAT_INTERVAL_SECONDS", "5")))
 
+
+class ReconnectBackoff:
+    """Bound control-plane retry delays while allowing deterministic tests."""
+
+    def __init__(self, base_seconds: float = 2, maximum_seconds: float = 30, jitter=None) -> None:
+        self.base_seconds = base_seconds
+        self.maximum_seconds = maximum_seconds
+        self.jitter = jitter or (lambda _: 0)
+        self.failures = 0
+
+    def next_delay(self) -> float:
+        delay = min(self.maximum_seconds, self.base_seconds * (2 ** self.failures))
+        self.failures += 1
+        return min(self.maximum_seconds, max(0, delay + self.jitter(delay)))
+
+    def reset(self) -> None:
+        self.failures = 0
+
 _RUNTIME_LOCK = threading.Lock()
 _RUNTIME_STATE = {
     "running_jobs": 0,
@@ -363,6 +381,39 @@ def claim_next_job() -> dict | None:
     if not res.get("claimed"):
         return None
     return res.get("job")
+
+
+def poll_control_command() -> dict | None:
+    query = urlencode({"token": NODE_TOKEN})
+    return _get(f"/api/v1/nodes/{NODE_ID}/commands/next?{query}").get("command")
+
+
+def acknowledge_control_command(command_id: str, result: str, error: str | None = None) -> None:
+    _post(
+        f"/api/v1/nodes/{NODE_ID}/commands/ack",
+        {"token": NODE_TOKEN, "command_id": command_id, "result": result, "error": error},
+    )
+
+
+def process_control_command() -> bool:
+    """Process one master-issued command; return True only when restart is requested."""
+    command = poll_control_command()
+    if not command:
+        return False
+    command_id = str(command.get("id") or "")
+    action = str(command.get("action") or "")
+    if not command_id:
+        return False
+    if action == "RECONNECT":
+        register_node()
+        heartbeat(_runtime_snapshot()["running_jobs"], _collect_cache_inventory())
+        acknowledge_control_command(command_id, "registered and heartbeated")
+        return False
+    if action == "RESTART":
+        acknowledge_control_command(command_id, "runner exiting for systemd restart")
+        return True
+    acknowledge_control_command(command_id, "unsupported action", error=action)
+    return False
 
 
 def execute_job(job: dict) -> None:
@@ -767,18 +818,31 @@ def _find_yaml_in_dir(directory: Path) -> Path | None:
 
 
 def _heartbeat_loop(stop_event: threading.Event) -> None:
+    backoff = ReconnectBackoff()
     while not stop_event.is_set():
         try:
             heartbeat(_runtime_snapshot()["running_jobs"], _collect_cache_inventory())
+            backoff.reset()
         except Exception as e:
             print(f"[agent] heartbeat failed (will retry): {e}")
+            stop_event.wait(backoff.next_delay())
+            continue
         stop_event.wait(HEARTBEAT_INTERVAL)
 
 
 def run_forever() -> None:
     """Register, continuously report runtime state, and execute claimed jobs."""
     print(f"[agent] node_id={NODE_ID} kind={_env('NODE_KIND', 'local')} master={MASTER_API_BASE}")
-    register_node()
+    backoff = ReconnectBackoff()
+    while True:
+        try:
+            register_node()
+            backoff.reset()
+            break
+        except Exception as e:
+            delay = backoff.next_delay()
+            print(f"[agent] registration failed (retrying in {delay}s): {e}")
+            time.sleep(delay)
     stop_event = threading.Event()
     threading.Thread(target=_heartbeat_loop, args=(stop_event,), daemon=True).start()
     running = 0
@@ -789,18 +853,31 @@ def run_forever() -> None:
             continue
 
         try:
-            run_provision_loop()
+            if process_control_command():
+                print("[agent] restart command acknowledged; exiting for systemd")
+                return
         except Exception as e:
-            print(f"[agent] provision loop error (will retry): {e}")
+            print(f"[agent] control-command poll failed (will retry): {e}")
+
+        try:
+            run_provision_loop()
+            backoff.reset()
+        except Exception as e:
+            delay = backoff.next_delay()
+            print(f"[agent] provision loop error (retrying in {delay}s): {e}")
+            time.sleep(delay)
+            continue
 
         try:
             job = claim_next_job()
+            backoff.reset()
             if not job:
                 time.sleep(POLL_INTERVAL)
                 continue
         except Exception as e:
-            print(f"[agent] claim-next failed (will retry): {e}")
-            time.sleep(POLL_INTERVAL)
+            delay = backoff.next_delay()
+            print(f"[agent] claim-next failed (retrying in {delay}s): {e}")
+            time.sleep(delay)
             continue
 
         running += 1

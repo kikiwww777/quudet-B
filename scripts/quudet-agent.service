@@ -7,8 +7,9 @@ Wants=network-online.target
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/quudet-B/quudet-yolo-lab-backend
-EnvironmentFile=/home/%i/.config/quudet-agent.env
-ExecStart=/home/%i/quudet-B/scripts/run-linux-agent.sh
+EnvironmentFile=/etc/quudet-agent/%i.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/%i/quudet-B/quudet-yolo-lab-backend/.venv/bin/python -m app.agent.runner
 Restart=always
 RestartSec=5
 KillMode=control-group

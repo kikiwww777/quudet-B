@@ -46,6 +46,15 @@ class NodeHeartbeatCapacityTests(unittest.TestCase):
         self.assertIsNone(job.assigned_node_id)
         self.assertEqual(job.recovery_attempts, 1)
 
+    def test_lost_job_fails_only_after_its_recovery_budget(self) -> None:
+        job = SimpleNamespace(status="RUNNING", dispatch_status="RUNNING_REMOTE", assigned_node_id="node-1", recovery_attempts=2, error_message=None)
+
+        recovered = _recover_lost_job(job, "node-1")
+
+        self.assertFalse(recovered)
+        self.assertEqual(job.status, "FAILED")
+        self.assertEqual(job.dispatch_status, "FAILED_REMOTE")
+
 
 if __name__ == "__main__":
     unittest.main()
