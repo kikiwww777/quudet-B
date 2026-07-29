@@ -64,6 +64,20 @@ def _append_train_opt(cmd: list[str], payload: dict[str, Any], key: str, *alt: s
         cmd.append(f"{key}={v}")
 
 
+def _normalize_close_mosaic(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    if not any(key in normalized for key in ("mosaic", "mixup")):
+        return normalized
+    try:
+        epochs = int(normalized.get("epochs") or 0)
+        close_mosaic = int(normalized.get("close_mosaic") or 0)
+    except (TypeError, ValueError):
+        return normalized
+    if "close_mosaic" not in normalized or (epochs and close_mosaic >= epochs):
+        normalized["close_mosaic"] = 0
+    return normalized
+
+
 _SAFE_SCALAR_TYPES = (str, int, float, bool)
 
 # Extra-args keys that would collide with first-class params or the
@@ -146,7 +160,7 @@ def build_command(
 ) -> list[str]:
     """Return argv list for subprocess (no shell)."""
     # yapf: disable
-    payload = payload or {}
+    payload = _normalize_close_mosaic(payload or {})
     wd = work_dir
     exe = yolo_executable()
 

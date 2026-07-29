@@ -6,6 +6,24 @@ from app.services.yolo_runner import build_command
 
 
 class YoloCommandPathTests(unittest.TestCase):
+    def test_short_augmentation_run_keeps_augmentations_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            command = build_command(
+                "train",
+                {
+                    "model": "yolo11n.pt",
+                    "data": "VOC.yaml",
+                    "epochs": 10,
+                    "mosaic": 0.5,
+                    "mixup": 0.1,
+                },
+                work_dir / "artifacts" / "job-1",
+                work_dir=work_dir,
+            )
+
+        self.assertIn("close_mosaic=0", command)
+
     def test_uses_explicit_work_dir_for_detect_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir)
