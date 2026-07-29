@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.node import NodeHeartbeatRequest, NodeRead, NodeRegisterRequest
 
 router = APIRouter(prefix="/nodes", tags=["nodes"])
+MAX_NODE_RECOVERY_ATTEMPTS = 2
 
 def _merge_reported_running_jobs(current: int, reported: int) -> int:
     """Keep server-reserved slots when another agent reports itself idle."""
@@ -55,6 +56,25 @@ def _mark_node_offline(node: ComputeNode) -> None:
     """Mark a stale node offline and release its server-reserved slots."""
     node.status = "OFFLINE"
     node.running_jobs = 0
+
+
+def _recover_lost_job(job: JobRecord, node_id: str) -> bool:
+    """Return an expired remote job to scheduling until its recovery budget ends."""
+    attempts = int(getattr(job, "recovery_attempts", 0) or 0)
+    if attempts >= MAX_NODE_RECOVERY_ATTEMPTS:
+        job.status = "FAILED"
+        job.dispatch_status = "FAILED_REMOTE"
+        job.finished_at = datetime.utcnow()
+        job.error_message = (job.error_message or "") + f" | node {node_id} recovery budget exhausted"
+        return False
+    job.recovery_attempts = attempts + 1
+    job.status = "PENDING_ASSIGN"
+    job.dispatch_status = "RECOVERY_PENDING"
+    job.assigned_node_id = None
+    job.started_at = None
+    job.last_heartbeat_at = None
+    job.error_message = (job.error_message or "") + f" | node {node_id} lost; recovery attempt {job.recovery_attempts}"
+    return True
 
 
 def _hash_node_token(token: str) -> str:
@@ -163,12 +183,6 @@ def list_nodes(
                 .all()
             )
             for job in stale_jobs:
-                job.status = "FAILED"
-                job.dispatch_status = "FAILED_REMOTE"
-                job.finished_at = now
-                job.error_message = (
-                    job.error_message
-                    or f"Node {node.id} heartbeat timeout (> {timeout.total_seconds():.0f}s), job marked failed."
-                )
+                _recover_lost_job(job, node.id)
     db.commit()
     return [NodeRead.model_validate(x) for x in rows]

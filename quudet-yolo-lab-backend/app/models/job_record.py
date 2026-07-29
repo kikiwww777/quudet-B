@@ -32,6 +32,7 @@ class JobRecord(Base):
     dispatch_status: Mapped[str] = mapped_column(String(32), nullable=False, default="LOCAL")
     metrics_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    recovery_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # --- 实验组 / 科研改造新增字段 ---
     experiment_group_id: Mapped[str | None] = mapped_column(

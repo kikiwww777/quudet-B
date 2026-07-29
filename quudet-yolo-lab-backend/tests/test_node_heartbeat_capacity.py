@@ -1,7 +1,7 @@
 ﻿import unittest
 from types import SimpleNamespace
 
-from app.api.routes.nodes import _mark_node_offline, _merge_node_capabilities, _merge_reported_running_jobs
+from app.api.routes.nodes import _mark_node_offline, _merge_node_capabilities, _merge_reported_running_jobs, _recover_lost_job
 
 
 class NodeHeartbeatCapacityTests(unittest.TestCase):
@@ -34,6 +34,17 @@ class NodeHeartbeatCapacityTests(unittest.TestCase):
         merged = _merge_node_capabilities(current, reported, preserve_active_runtime=False)
 
         self.assertIsNone(merged["agent_runtime"]["active_job_id"])
+
+    def test_lost_job_is_requeued_with_bounded_recovery_count(self) -> None:
+        job = SimpleNamespace(status="RUNNING", dispatch_status="RUNNING_REMOTE", assigned_node_id="node-1", recovery_attempts=0, error_message=None)
+
+        recovered = _recover_lost_job(job, "node-1")
+
+        self.assertTrue(recovered)
+        self.assertEqual(job.status, "PENDING_ASSIGN")
+        self.assertEqual(job.dispatch_status, "RECOVERY_PENDING")
+        self.assertIsNone(job.assigned_node_id)
+        self.assertEqual(job.recovery_attempts, 1)
 
 
 if __name__ == "__main__":
