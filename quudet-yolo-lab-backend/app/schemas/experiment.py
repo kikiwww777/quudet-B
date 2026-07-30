@@ -36,6 +36,7 @@ class SweepSpec(BaseModel):
 
 class ExperimentGroupCreate(BaseModel):
     name: str
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
     description: str | None = None
     hypothesis_id: str | None = None
     gap_id: str | None = None

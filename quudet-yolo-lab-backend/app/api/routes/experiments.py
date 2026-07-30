@@ -57,6 +57,20 @@ def create_experiment_group(
 
     Accepts either explicit runs or a sweep grid (not both).
     """
+    if body.idempotency_key:
+        existing = (
+            db.query(ExperimentGroup)
+            .filter(ExperimentGroup.owner_id == user.id, ExperimentGroup.idempotency_key == body.idempotency_key)
+            .first()
+        )
+        if existing is not None:
+            runs = (
+                db.query(JobRecord)
+                .filter(JobRecord.experiment_group_id == existing.id)
+                .order_by(JobRecord.run_index)
+                .all()
+            )
+            return _build_detail_response(existing, runs)
     # ── Preparation gate ──
     gate = _get_prep_gate()
     skip = os.environ.get("EXPERIMENT_PREPARATION_SKIP", "").lower() in ("1", "true", "yes")
@@ -86,6 +100,7 @@ def create_experiment_group(
     # 1. Create ExperimentGroup row
     group = ExperimentGroup(
         name=body.name,
+        idempotency_key=body.idempotency_key,
         description=body.description,
         hypothesis_id=body.hypothesis_id,
         gap_id=body.gap_id,

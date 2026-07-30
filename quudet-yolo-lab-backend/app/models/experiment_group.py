@@ -16,6 +16,7 @@ class ExperimentGroup(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(512), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     hypothesis_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     gap_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
